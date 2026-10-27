@@ -57,8 +57,9 @@ class SetupWizardController extends Controller
                 ),
                 'qbittorrent' => QbitService::testConnection(
                     (string) $data['base_url'],
-                    (string) $data['username'],
-                    (string) $data['password']
+                    $data['username'] ?? null,
+                    $data['password'] ?? null,
+                    $data['api_key'] ?? null
                 ),
             };
 
@@ -112,11 +113,22 @@ class SetupWizardController extends Controller
             'sonarr.defaults.rootFolderPath' => 'nullable|string',
             'sonarr.defaults.languageProfileId' => 'nullable|integer',
             'qbittorrent.base_url' => 'required|string',
-            'qbittorrent.username' => 'required|string',
-            'qbittorrent.password' => 'required|string',
+            'qbittorrent.api_key' => 'nullable|string',
+            'qbittorrent.username' => 'nullable|string',
+            'qbittorrent.password' => 'nullable|string',
         ]);
 
-        DB::transaction(function () use ($data) {
+        $qbitApiKey = $data['qbittorrent']['api_key'] ?? null;
+        $qbitUser = $data['qbittorrent']['username'] ?? null;
+        $qbitPass = $data['qbittorrent']['password'] ?? null;
+
+        if (! filled($qbitApiKey) && (! filled($qbitUser) || ! filled($qbitPass))) {
+            return back()->withErrors([
+                'qbittorrent' => 'Provide a qBittorrent API key, or username + password.',
+            ]);
+        }
+
+        DB::transaction(function () use ($data, $qbitApiKey, $qbitUser, $qbitPass) {
             $this->upsert('tmdb', [
                 'base_url' => $data['tmdb']['base_url'] ?? 'https://api.themoviedb.org/3',
                 'api_key' => $data['tmdb']['api_key'],
@@ -143,8 +155,9 @@ class SetupWizardController extends Controller
 
             $this->upsert('qbittorrent', [
                 'base_url' => $data['qbittorrent']['base_url'],
-                'username' => $data['qbittorrent']['username'],
-                'password' => $data['qbittorrent']['password'],
+                'api_key' => $qbitApiKey,
+                'username' => $qbitUser,
+                'password' => $qbitPass,
                 'is_enabled' => true,
             ]);
         });

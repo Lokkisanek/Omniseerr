@@ -6,23 +6,147 @@
 @source '../**/*.js';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
-    --color-omniseerr: #090d16;
-    --color-omniseerr-panel: #0f1524;
-    --color-omniseerr-accent: #3b82f6;
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
-html,
-body {
-    background: #090d16;
-    color: #e2e8f0;
-    min-height: 100%;
+/* Overseerr / Seerr visual language */
+@layer base {
+    html {
+        scrollbar-width: thin;
+        scrollbar-color: #4b5563 #1f2937;
+    }
+
+    body {
+        @apply bg-gray-900 font-sans text-gray-100 antialiased;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    label,
+    .group-label {
+        @apply mb-1 block text-sm font-bold leading-5 text-gray-400;
+    }
+
+    input[type='text'],
+    input[type='password'],
+    input[type='search'],
+    input[type='url'],
+    input[type='email'],
+    select,
+    textarea {
+        @apply block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 px-3 py-2 text-white shadow-sm transition duration-150 ease-in-out placeholder:text-gray-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm sm:leading-5;
+    }
+
+    input[type='checkbox'] {
+        @apply h-5 w-5 rounded-md border-gray-500 bg-gray-700 text-indigo-600 transition duration-150 ease-in-out focus:ring-indigo-500;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+        @apply disabled:cursor-not-allowed;
+    }
 }
 
-body {
-    background-image:
-        radial-gradient(ellipse 80% 50% at 20% -10%, rgba(59, 130, 246, 0.18), transparent),
-        radial-gradient(ellipse 60% 40% at 90% 10%, rgba(14, 165, 233, 0.12), transparent),
-        linear-gradient(180deg, #090d16 0%, #0b1220 100%);
-    background-attachment: fixed;
+@layer components {
+    .sidebar {
+        @apply border-r border-gray-700;
+        background: linear-gradient(180deg, rgba(31, 41, 55, 1) 0%, #131928 100%);
+    }
+
+    .searchbar {
+        @apply h-16;
+    }
+
+    .heading {
+        @apply text-2xl font-bold leading-8 text-gray-100;
+    }
+
+    .description {
+        @apply mt-1 max-w-4xl text-sm leading-5 text-gray-400;
+    }
+
+    .section {
+        @apply mt-6 mb-10 text-white;
+    }
+
+    .slider-header {
+        @apply relative mt-6 mb-4 flex;
+    }
+
+    .slider-title {
+        @apply inline-flex items-center text-xl font-bold leading-7 text-gray-300 sm:truncate sm:text-2xl sm:leading-9;
+    }
+
+    ul.cards-vertical {
+        @apply grid gap-4;
+        grid-template-columns: repeat(auto-fill, minmax(9.375rem, 1fr));
+    }
+
+    .btn {
+        @apply inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm leading-5 font-medium whitespace-nowrap transition duration-150 ease-in-out focus:outline-none disabled:opacity-50;
+    }
+
+    .btn-primary {
+        @apply border-indigo-500 bg-indigo-600/80 text-white hover:border-indigo-500 hover:bg-indigo-600 focus:border-indigo-700 active:border-indigo-700 active:bg-indigo-600;
+    }
+
+    .btn-default {
+        @apply border-gray-600 bg-gray-800/80 text-gray-200 hover:border-gray-600 hover:bg-gray-700 hover:text-white focus:border-blue-300 active:border-gray-600 active:bg-gray-700 active:text-gray-200;
+    }
+
+    .btn-danger {
+        @apply border-red-500 bg-red-600/80 text-white hover:border-red-500 hover:bg-red-600 focus:border-red-700 active:border-red-700 active:bg-red-700;
+    }
+
+    .btn-ghost {
+        @apply border-gray-600 bg-transparent text-white hover:border-gray-200 focus:border-gray-100 active:border-gray-100;
+    }
+
+    .btn-sm {
+        @apply px-2.5 py-1.5 text-xs;
+    }
+
+    .btn-lg {
+        @apply px-6 py-3 text-base;
+    }
+
+    .text-brand {
+        @apply bg-gradient-to-br from-indigo-400 to-purple-400 bg-clip-text text-transparent;
+    }
+
+    .nav-active {
+        @apply bg-gradient-to-br from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500;
+    }
+
+    .panel {
+        @apply rounded-lg border border-gray-700 bg-gray-800/60 shadow;
+    }
+
+    .form-error {
+        @apply mt-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400;
+    }
+
+    .form-success {
+        @apply mt-2 rounded-md border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm text-green-300;
+    }
+
+    .actions {
+        @apply mt-8 border-t border-gray-700 pt-5 text-white;
+    }
+
+    .label-tip {
+        @apply ml-1 font-medium text-gray-500 normal-case;
+    }
+}
+
+@layer utilities {
+    .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
 }

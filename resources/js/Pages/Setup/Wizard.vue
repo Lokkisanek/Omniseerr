@@ -42,6 +42,7 @@ const form = reactive({
     },
     qbittorrent: {
         base_url: props.configs.qbittorrent?.base_url || '',
+        api_key: '',
         username: props.configs.qbittorrent?.username || 'admin',
         password: '',
     },
@@ -67,7 +68,10 @@ const canNext = computed(() => {
             && !!form.sonarr.defaults.qualityProfileId
             && !!form.sonarr.defaults.rootFolderPath;
     }
-    return !!form.qbittorrent.base_url && !!form.qbittorrent.username && !!form.qbittorrent.password;
+    return !!form.qbittorrent.base_url && (
+        !!form.qbittorrent.api_key
+        || (!!form.qbittorrent.username && !!form.qbittorrent.password)
+    );
 });
 
 async function testCurrent() {
@@ -129,56 +133,58 @@ function finish() {
 <template>
     <div class="mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-4 py-10">
         <div class="mb-8">
-            <h1 class="text-3xl font-semibold tracking-tight text-white">Omniseerr</h1>
-            <p class="mt-2 text-slate-400">Four-step setup. No .env editing required.</p>
+            <h1 class="text-3xl font-bold tracking-tight">
+                <span class="text-brand">Omni</span><span class="text-white">seerr</span>
+            </h1>
+            <p class="description">Four-step setup. No .env editing required.</p>
         </div>
 
         <div class="mb-6 grid grid-cols-4 gap-2">
             <div
                 v-for="s in steps"
                 :key="s.id"
-                class="rounded-xl border px-3 py-3"
-                :class="step === s.id ? 'border-blue-400/40 bg-blue-500/10' : 'border-white/10 bg-white/5'"
+                class="rounded-md border px-3 py-3"
+                :class="step === s.id ? 'border-indigo-500 bg-indigo-600/20' : 'border-gray-700 bg-gray-800/60'"
             >
-                <div class="text-xs uppercase tracking-wider text-slate-500">Step {{ s.id }}</div>
+                <div class="text-xs font-bold tracking-wider text-gray-500 uppercase">Step {{ s.id }}</div>
                 <div class="text-sm font-medium text-white">{{ s.title }}</div>
             </div>
         </div>
 
-        <div class="rounded-2xl border border-white/10 bg-slate-900/70 p-6 backdrop-blur-xl">
+        <div class="panel p-6">
             <div v-if="step === 1" class="space-y-4">
-                <h2 class="text-lg font-medium text-white">TMDB API</h2>
-                <label class="block text-sm text-slate-400">
+                <h2 class="text-lg font-bold text-gray-100">TMDB API</h2>
+                <label>
                     API Key
-                    <input v-model="form.tmdb.api_key" type="password" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white" />
+                    <input v-model="form.tmdb.api_key" type="password" class="mt-1" />
                 </label>
-                <label class="block text-sm text-slate-400">
+                <label>
                     Base URL
-                    <input v-model="form.tmdb.base_url" type="text" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white" />
+                    <input v-model="form.tmdb.base_url" type="text" class="mt-1" />
                 </label>
             </div>
 
             <div v-else-if="step === 2" class="space-y-4">
-                <h2 class="text-lg font-medium text-white">Radarr</h2>
-                <label class="block text-sm text-slate-400">
+                <h2 class="text-lg font-bold text-gray-100">Radarr</h2>
+                <label>
                     Base URL
-                    <input v-model="form.radarr.base_url" placeholder="http://radarr:7878" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white" />
+                    <input v-model="form.radarr.base_url" placeholder="http://radarr:7878" class="mt-1" />
                 </label>
-                <label class="block text-sm text-slate-400">
+                <label>
                     API Key
-                    <input v-model="form.radarr.api_key" type="password" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white" />
+                    <input v-model="form.radarr.api_key" type="password" class="mt-1" />
                 </label>
                 <div class="grid gap-4 sm:grid-cols-2">
-                    <label class="block text-sm text-slate-400">
+                    <label>
                         Default quality profile
-                        <select v-model="form.radarr.defaults.qualityProfileId" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white">
+                        <select v-model="form.radarr.defaults.qualityProfileId" class="mt-1">
                             <option :value="null" disabled>Select after Test Connection</option>
                             <option v-for="p in radarrMeta.profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
                         </select>
                     </label>
-                    <label class="block text-sm text-slate-400">
+                    <label>
                         Default root folder
-                        <select v-model="form.radarr.defaults.rootFolderPath" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white">
+                        <select v-model="form.radarr.defaults.rootFolderPath" class="mt-1">
                             <option :value="null" disabled>Select after Test Connection</option>
                             <option v-for="f in radarrMeta.folders" :key="f.path" :value="f.path">{{ f.path }}</option>
                         </select>
@@ -188,85 +194,90 @@ function finish() {
 
             <div v-else-if="step === 3" class="space-y-4">
                 <div class="flex items-center justify-between">
-                    <h2 class="text-lg font-medium text-white">Sonarr (optional)</h2>
-                    <label class="flex items-center gap-2 text-sm text-slate-300">
-                        <input v-model="form.sonarr.enabled" type="checkbox" class="rounded border-white/20 bg-slate-800 text-blue-500" />
+                    <h2 class="text-lg font-bold text-gray-100">Sonarr (optional)</h2>
+                    <label class="checkbox-label mb-0 flex items-center gap-2 font-medium text-gray-300">
+                        <input v-model="form.sonarr.enabled" type="checkbox" />
                         Enable
                     </label>
                 </div>
                 <template v-if="form.sonarr.enabled">
-                    <label class="block text-sm text-slate-400">
+                    <label>
                         Base URL
-                        <input v-model="form.sonarr.base_url" placeholder="http://sonarr:8989" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white" />
+                        <input v-model="form.sonarr.base_url" placeholder="http://sonarr:8989" class="mt-1" />
                     </label>
-                    <label class="block text-sm text-slate-400">
+                    <label>
                         API Key
-                        <input v-model="form.sonarr.api_key" type="password" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white" />
+                        <input v-model="form.sonarr.api_key" type="password" class="mt-1" />
                     </label>
                     <div class="grid gap-4 sm:grid-cols-2">
-                        <label class="block text-sm text-slate-400">
+                        <label>
                             Quality profile
-                            <select v-model="form.sonarr.defaults.qualityProfileId" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white">
+                            <select v-model="form.sonarr.defaults.qualityProfileId" class="mt-1">
                                 <option :value="null" disabled>Select after Test Connection</option>
                                 <option v-for="p in sonarrMeta.profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
                             </select>
                         </label>
-                        <label class="block text-sm text-slate-400">
+                        <label>
                             Root folder
-                            <select v-model="form.sonarr.defaults.rootFolderPath" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white">
+                            <select v-model="form.sonarr.defaults.rootFolderPath" class="mt-1">
                                 <option :value="null" disabled>Select after Test Connection</option>
                                 <option v-for="f in sonarrMeta.folders" :key="f.path" :value="f.path">{{ f.path }}</option>
                             </select>
                         </label>
                     </div>
                 </template>
-                <p v-else class="text-sm text-slate-400">Skip for now — movies-only mode works without Sonarr.</p>
+                <p v-else class="text-sm text-gray-400">Skip for now — movies-only mode works without Sonarr.</p>
             </div>
 
             <div v-else class="space-y-4">
-                <h2 class="text-lg font-medium text-white">qBittorrent</h2>
-                <label class="block text-sm text-slate-400">
+                <h2 class="text-lg font-bold text-gray-100">qBittorrent</h2>
+                <p class="text-sm text-gray-400">
+                    Prefer API key (qBittorrent 5.2+: Web UI → Generate key). Username/password still works as fallback.
+                </p>
+                <label>
                     Base URL
-                    <input v-model="form.qbittorrent.base_url" placeholder="http://qbittorrent:8080" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white" />
+                    <input v-model="form.qbittorrent.base_url" placeholder="http://qbittorrent:8080" class="mt-1" />
+                </label>
+                <label>
+                    API key <span class="label-tip">recommended</span>
+                    <input v-model="form.qbittorrent.api_key" type="password" placeholder="qbt_..." class="mt-1" />
                 </label>
                 <div class="grid gap-4 sm:grid-cols-2">
-                    <label class="block text-sm text-slate-400">
-                        Username
-                        <input v-model="form.qbittorrent.username" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white" />
+                    <label>
+                        Username <span class="label-tip">if no API key</span>
+                        <input v-model="form.qbittorrent.username" class="mt-1" />
                     </label>
-                    <label class="block text-sm text-slate-400">
-                        Password
-                        <input v-model="form.qbittorrent.password" type="password" class="mt-1 w-full rounded-lg border border-white/10 bg-slate-950 px-3 py-2 text-white" />
+                    <label>
+                        Password <span class="label-tip">if no API key</span>
+                        <input v-model="form.qbittorrent.password" type="password" class="mt-1" />
                     </label>
                 </div>
             </div>
 
-            <div v-if="testMessage" class="mt-4 rounded-lg border px-3 py-2 text-sm" :class="testOk ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-500/30 bg-rose-500/10 text-rose-300'">
+            <div v-if="testMessage" :class="testOk ? 'form-success' : 'form-error'">
                 {{ testMessage }}
             </div>
 
-            <div class="mt-6 flex flex-wrap items-center justify-between gap-3">
-                <button
-                    class="rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-300 hover:bg-white/5 disabled:opacity-40"
-                    :disabled="step === 1"
-                    @click="back"
-                >
+            <div class="actions flex flex-wrap items-center justify-between gap-3">
+                <button type="button" class="btn btn-default" :disabled="step === 1" @click="back">
                     Back
                 </button>
                 <div class="flex gap-2">
                     <button
                         v-if="step !== 3 || form.sonarr.enabled"
-                        class="inline-flex items-center gap-2 rounded-lg border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/5"
+                        type="button"
+                        class="btn btn-default"
                         :disabled="testing"
                         @click="testCurrent"
                     >
-                        <LoaderCircle v-if="testing" class="h-4 w-4 animate-spin" />
-                        <Check v-else-if="testOk" class="h-4 w-4 text-emerald-400" />
+                        <LoaderCircle v-if="testing" class="mr-2 h-4 w-4 animate-spin" />
+                        <Check v-else-if="testOk" class="mr-2 h-4 w-4 text-green-400" />
                         Test Connection
                     </button>
                     <button
                         v-if="step < 4"
-                        class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+                        type="button"
+                        class="btn btn-primary"
                         :disabled="!canNext"
                         @click="next"
                     >
@@ -274,7 +285,8 @@ function finish() {
                     </button>
                     <button
                         v-else
-                        class="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40"
+                        type="button"
+                        class="btn btn-primary"
                         :disabled="!canNext || saving"
                         @click="finish"
                     >
