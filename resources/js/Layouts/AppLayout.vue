@@ -5,11 +5,13 @@ import {
     Activity,
     Clapperboard,
     Film,
+    LogOut,
     Menu,
     Search,
     Settings,
     Sparkles,
     Tv,
+    Users,
     X,
 } from '@lucide/vue';
 import LiveDownloadDock from '../Components/LiveDownloadDock.vue';
@@ -27,6 +29,9 @@ const sidebarOpen = ref(false);
 const scrolled = ref(false);
 const searchQuery = ref('');
 
+const user = computed(() => page.props.auth?.user);
+const can = computed(() => user.value?.can || {});
+
 const path = computed(() => page.url.split('?')[0]);
 const query = computed(() => {
     const raw = page.url.includes('?') ? page.url.split('?')[1] : '';
@@ -37,24 +42,27 @@ const mediaType = computed(() => query.value.type || 'movie');
 
 const links = computed(() => {
     const type = query.value.type;
-    return [
+    const items = [
         {
             href: '/discover',
             label: 'Discover',
             icon: Sparkles,
             active: path.value === '/discover' && !type,
+            show: true,
         },
         {
             href: '/discover?type=movie',
             label: 'Movies',
             icon: Film,
             active: path.value === '/discover' && type === 'movie',
+            show: true,
         },
         {
             href: '/discover?type=tv',
             label: 'Series',
             icon: Tv,
             active: path.value === '/discover' && type === 'tv',
+            show: true,
         },
         {
             href: '/activity',
@@ -62,22 +70,37 @@ const links = computed(() => {
             icon: Activity,
             active: path.value === '/activity',
             badge: downloads.activeCount || null,
+            show: !!can.value.viewActivity,
+        },
+        {
+            href: '/users',
+            label: 'Users',
+            icon: Users,
+            active: path.value === '/users',
+            show: !!can.value.manageUsers,
         },
         {
             href: '/setup?force=1',
             label: 'Settings',
             icon: Settings,
             active: path.value === '/setup',
+            show: !!can.value.manageSettings,
         },
     ];
+
+    return items.filter((item) => item.show);
 });
 
 function submitSearch() {
-    router.get(
-        '/discover',
-        { q: searchQuery.value, type: mediaType.value },
-        { preserveState: true, replace: true },
-    );
+    const params = { type: mediaType.value };
+    if (searchQuery.value?.trim()) {
+        params.q = searchQuery.value.trim();
+    }
+    router.get('/discover', params, { preserveState: true, replace: true });
+}
+
+function logout() {
+    router.post('/logout');
 }
 
 function onScroll() {
@@ -126,6 +149,17 @@ onBeforeUnmount(() => {
                     </span>
                 </Link>
             </nav>
+
+            <div class="border-t border-gray-700 p-4">
+                <div class="mb-3 truncate text-sm">
+                    <div class="font-semibold text-white">{{ user?.name }}</div>
+                    <div class="truncate text-xs text-gray-400">{{ user?.email }}</div>
+                </div>
+                <button type="button" class="btn btn-default btn-sm w-full" @click="logout">
+                    <LogOut class="mr-2 h-4 w-4" />
+                    Sign out
+                </button>
+            </div>
         </aside>
 
         <div v-if="sidebarOpen" class="fixed inset-0 z-50 lg:hidden">
@@ -152,6 +186,12 @@ onBeforeUnmount(() => {
                         {{ link.label }}
                     </Link>
                 </nav>
+                <div class="border-t border-gray-700 p-4">
+                    <button type="button" class="btn btn-default btn-sm w-full" @click="logout">
+                        <LogOut class="mr-2 h-4 w-4" />
+                        Sign out
+                    </button>
+                </div>
             </aside>
         </div>
 
@@ -169,17 +209,17 @@ onBeforeUnmount(() => {
                     <input
                         v-model="searchQuery"
                         type="search"
-                        placeholder="Search movies & TV..."
+                        placeholder="Search Movies & Series"
                         class="!rounded-full !border-gray-600 !bg-gray-800 py-2 pr-4 pl-10"
                     />
                 </form>
             </header>
 
-            <main class="relative flex-1 px-4 pt-6 pb-28 sm:px-6 lg:px-8">
+            <main class="relative flex-1 px-4 pt-6 pb-16 sm:px-6 lg:px-8">
                 <slot />
             </main>
 
-            <LiveDownloadDock />
+            <LiveDownloadDock v-if="can.viewActivity" />
         </div>
     </div>
 </template>

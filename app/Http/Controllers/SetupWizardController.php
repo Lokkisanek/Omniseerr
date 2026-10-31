@@ -3,13 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\ServiceConfig;
+use App\Models\User;
+use App\Services\MediaSyncService;
 use App\Services\QbitService;
 use App\Services\RadarrService;
 use App\Services\SonarrService;
-use App\Services\TmdbService;
+use App\Support\Permission;
+use App\Support\Settings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
 use Throwable;
@@ -22,19 +27,21 @@ class SetupWizardController extends Controller
 
         return Inertia::render('Setup/Wizard', [
             'configs' => [
-                'tmdb' => $this->publicConfig($configs->get('tmdb')),
                 'radarr' => $this->publicConfig($configs->get('radarr')),
                 'sonarr' => $this->publicConfig($configs->get('sonarr')),
                 'qbittorrent' => $this->publicConfig($configs->get('qbittorrent'), hideApiKey: true),
             ],
             'setupComplete' => ServiceConfig::setupComplete(),
+            'servicesConfigured' => ServiceConfig::servicesConfigured(),
+            'hasAdminUser' => ServiceConfig::hasAdminUser(),
+            'needsAdmin' => ! ServiceConfig::hasAdminUser(),
         ]);
     }
 
     public function test(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'service' => 'required|in:tmdb,radarr,sonarr,qbittorrent',
+            'service' => 'required|in:radarr,sonarr,qbittorrent',
             'base_url' => 'nullable|string',
             'api_key' => 'nullable|string',
             'username' => 'nullable|string',
@@ -43,10 +50,6 @@ class SetupWizardController extends Controller
 
         try {
             $result = match ($data['service']) {
-                'tmdb' => TmdbService::testConnection(
-                    (string) $data['api_key'],
-                    $data['base_url'] ?? null
-                ),
                 'radarr' => RadarrService::testConnection(
                     (string) $data['base_url'],
                     (string) $data['api_key']
@@ -99,9 +102,35 @@ class SetupWizardController extends Controller
 
     public function store(Request $request)
     {
-        $data = $request->validate([
-            'tmdb.api_key' => 'required|string',
-            'tmdb.base_url' => 'nullable|string',
+        $creatingAdmin = ! ServiceConfig::hasAdminUser();
+        $servicesReady = ServiceConfig::servicesConfigured();
+        $adminOnly = $creatingAdmin && $servicesReady && $request->boolean('admin_only');
+        $skipAdmin = $request->boolean('skip_admin');
+
+        if ($adminOnly) {
+            $data = $request->validate([
+                'admin.name' => 'required|string|max:255',
+                'admin.email' => 'required|email|max:255|unique:users,email',
+                'admin.password' => ['required', 'confirmed', Password::defaults()],
+            ]);
+
+            $admin = User::create([
+                'name' => $data['admin']['name'],
+                'email' => $data['admin']['email'],
+                'password' => $data['admin']['password'],
+                'permissions' => Permission::ADMIN,
+                'user_type' => 'local',
+                'is_active' => true,
+                'last_login_at' => now(),
+            ]);
+
+            Auth::login($admin);
+            $request->session()->regenerate();
+
+            return redirect()->route('discover');
+        }
+
+        $rules = [
             'radarr.base_url' => 'required|string',
             'radarr.api_key' => 'required|string',
             'radarr.defaults.qualityProfileId' => 'required|integer',
@@ -116,7 +145,15 @@ class SetupWizardController extends Controller
             'qbittorrent.api_key' => 'nullable|string',
             'qbittorrent.username' => 'nullable|string',
             'qbittorrent.password' => 'nullable|string',
-        ]);
+        ];
+
+        if ($creatingAdmin && ! $skipAdmin) {
+            $rules['admin.name'] = 'required|string|max:255';
+            $rules['admin.email'] = 'required|email|max:255|unique:users,email';
+            $rules['admin.password'] = ['required', 'confirmed', Password::defaults()];
+        }
+
+        $data = $request->validate($rules);
 
         $qbitApiKey = $data['qbittorrent']['api_key'] ?? null;
         $qbitUser = $data['qbittorrent']['username'] ?? null;
@@ -128,10 +165,13 @@ class SetupWizardController extends Controller
             ]);
         }
 
-        DB::transaction(function () use ($data, $qbitApiKey, $qbitUser, $qbitPass) {
+        $admin = null;
+
+        DB::transaction(function () use ($data, $qbitApiKey, $qbitUser, $qbitPass, $creatingAdmin, $skipAdmin, &$admin) {
+            // Ensure bundled TMDB is marked enabled so older checks stay happy.
             $this->upsert('tmdb', [
-                'base_url' => $data['tmdb']['base_url'] ?? 'https://api.themoviedb.org/3',
-                'api_key' => $data['tmdb']['api_key'],
+                'base_url' => config('omniseerr.tmdb_base_url'),
+                'api_key' => config('omniseerr.tmdb_api_key'),
                 'is_enabled' => true,
             ]);
 
@@ -160,9 +200,42 @@ class SetupWizardController extends Controller
                 'password' => $qbitPass,
                 'is_enabled' => true,
             ]);
+
+            if ($creatingAdmin && ! $skipAdmin) {
+                $admin = User::create([
+                    'name' => $data['admin']['name'],
+                    'email' => $data['admin']['email'],
+                    'password' => $data['admin']['password'],
+                    'permissions' => Permission::ADMIN,
+                    'user_type' => 'local',
+                    'is_active' => true,
+                    'last_login_at' => now(),
+                ]);
+            }
         });
 
-        return redirect()->route('discover');
+        Settings::setMain([
+            'mediaServerType' => 'plex',
+            'plexAllowNewUsers' => true,
+            'newPlexLogin' => true,
+            'localLogin' => true,
+        ]);
+
+        try {
+            app(MediaSyncService::class)->syncAll();
+        } catch (Throwable) {
+            // First sync is best-effort; scheduled job will retry.
+        }
+
+        if ($admin) {
+            Auth::login($admin);
+            $request->session()->regenerate();
+
+            return redirect()->route('discover');
+        }
+
+        // Services saved — first admin via Plex (or local login).
+        return redirect()->route('login');
     }
 
     private function upsert(string $service, array $attributes): void

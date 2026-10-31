@@ -206,13 +206,18 @@ class RadarrService
         }
     }
 
+    public function listMovies(): array
+    {
+        return $this->client(60)->get('/movie')->throw()->json() ?? [];
+    }
+
     public function getLibraryStatesByTmdbIds(array $tmdbIds): array
     {
         if ($tmdbIds === []) {
             return [];
         }
 
-        $movies = $this->client()->get('/movie')->throw()->json() ?? [];
+        $movies = $this->listMovies();
 
         return collect($movies)
             ->filter(fn ($m) => in_array($m['tmdbId'] ?? null, $tmdbIds, true))

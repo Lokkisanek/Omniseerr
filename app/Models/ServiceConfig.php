@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Permission;
 use Illuminate\Database\Eloquent\Model;
 
 class ServiceConfig extends Model
@@ -31,9 +32,10 @@ class ServiceConfig extends Model
         return static::query()->where('service', $service)->first();
     }
 
-    public static function setupComplete(): bool
+    public static function servicesConfigured(): bool
     {
-        $required = ['tmdb', 'radarr', 'qbittorrent'];
+        // TMDB uses a bundled app key (like Overseerr/Seerr) — not part of setup.
+        $required = ['radarr', 'qbittorrent'];
 
         $enabled = static::query()
             ->whereIn('service', $required)
@@ -42,5 +44,18 @@ class ServiceConfig extends Model
             ->all();
 
         return count(array_intersect($required, $enabled)) === count($required);
+    }
+
+    public static function hasAdminUser(): bool
+    {
+        return User::query()
+            ->where('is_active', true)
+            ->get()
+            ->contains(fn (User $user) => $user->hasPermission(Permission::ADMIN));
+    }
+
+    public static function setupComplete(): bool
+    {
+        return static::servicesConfigured() && static::hasAdminUser();
     }
 }

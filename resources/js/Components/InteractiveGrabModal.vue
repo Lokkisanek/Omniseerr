@@ -76,6 +76,7 @@ const grabRelease = async (release) => {
     try {
         await axios.post('/api/interactive-grab/execute', {
             radarr_movie_id: radarrMovieId.value,
+            tmdb_id: props.media?.tmdbId,
             guid: release.guid,
             indexer_id: release.indexerId,
         });

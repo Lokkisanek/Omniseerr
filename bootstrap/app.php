@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\EnsureActiveUser;
+use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -16,7 +18,15 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             HandleInertiaRequests::class,
+            EnsureActiveUser::class,
         ]);
+
+        $middleware->alias([
+            'permission' => EnsurePermission::class,
+        ]);
+
+        $middleware->redirectGuestsTo(fn () => route('login'));
+        $middleware->redirectUsersTo(fn () => route('discover'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

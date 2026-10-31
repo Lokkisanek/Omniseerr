@@ -146,13 +146,18 @@ class SonarrService
         }
     }
 
+    public function listSeries(): array
+    {
+        return $this->client(60)->get('/series')->throw()->json() ?? [];
+    }
+
     public function getLibraryStatesByTmdbIds(array $tmdbIds): array
     {
         if ($tmdbIds === []) {
             return [];
         }
 
-        $series = $this->client()->get('/series')->throw()->json() ?? [];
+        $series = $this->listSeries();
 
         return collect($series)
             ->filter(fn ($s) => in_array($s['tmdbId'] ?? null, $tmdbIds, true))

@@ -18,11 +18,13 @@ use Illuminate\Notifications\Notifiable;
     'user_type',
     'avatar',
     'plex_id',
+    'plex_username',
+    'plex_token',
     'jellyfin_id',
     'last_login_at',
     'is_active',
 ])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'plex_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -33,6 +35,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'plex_token' => 'encrypted',
             'permissions' => 'integer',
             'last_login_at' => 'datetime',
             'is_active' => 'boolean',
@@ -60,6 +63,7 @@ class User extends Authenticatable
             'email' => $this->email,
             'permissions' => (int) $this->permissions,
             'userType' => $this->user_type,
+            'plexUsername' => $this->plex_username,
             'avatar' => $this->avatar,
             'isAdmin' => $this->isAdmin(),
             'isActive' => $this->is_active,
@@ -68,7 +72,7 @@ class User extends Authenticatable
                 'manageUsers' => $this->hasPermission([Permission::ADMIN, Permission::MANAGE_USERS], 'or'),
                 'grabMovie' => $this->hasPermission([Permission::ADMIN, Permission::REQUEST, Permission::REQUEST_MOVIE], 'or'),
                 'grabTv' => $this->hasPermission([Permission::ADMIN, Permission::REQUEST, Permission::REQUEST_TV], 'or'),
-                'viewActivity' => $this->hasPermission([Permission::ADMIN, Permission::VIEW_ACTIVITY, Permission::MANAGE_REQUESTS], 'or'),
+                'viewActivity' => $this->hasPermission([Permission::ADMIN, Permission::RECENT_VIEW, Permission::MANAGE_REQUESTS], 'or'),
                 'controlDownloads' => $this->hasPermission([Permission::ADMIN, Permission::MANAGE_REQUESTS], 'or'),
             ],
         ];

@@ -26,14 +26,18 @@
         @apply mb-1 block text-sm font-bold leading-5 text-gray-400;
     }
 
+    /* Match inputs with or without an explicit type attribute (default is text). */
+    input:not([type]),
     input[type='text'],
     input[type='password'],
     input[type='search'],
     input[type='url'],
     input[type='email'],
+    input[type='number'],
+    input[type='tel'],
     select,
     textarea {
-        @apply block w-full min-w-0 flex-1 rounded-md border border-gray-500 bg-gray-700 px-3 py-2 text-white shadow-sm transition duration-150 ease-in-out placeholder:text-gray-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm sm:leading-5;
+        @apply mt-1 block w-full min-w-0 rounded-md border border-gray-500 bg-gray-700 px-3 py-2 text-white shadow-sm transition duration-150 ease-in-out placeholder:text-gray-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 sm:text-sm sm:leading-5;
     }
 
     input[type='checkbox'] {
@@ -83,6 +87,18 @@
         grid-template-columns: repeat(auto-fill, minmax(9.375rem, 1fr));
     }
 
+    /* Seerr-style dense Movies/Series grid (~8 across on wide screens) */
+    ul.cards-dense {
+        @apply gap-3;
+        grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+    }
+
+    @media (min-width: 1280px) {
+        ul.cards-dense {
+            grid-template-columns: repeat(auto-fill, minmax(8.25rem, 1fr));
+        }
+    }
+
     .btn {
         @apply inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm leading-5 font-medium whitespace-nowrap transition duration-150 ease-in-out focus:outline-none disabled:opacity-50;
     }
@@ -121,6 +137,10 @@
 
     .panel {
         @apply rounded-lg border border-gray-700 bg-gray-800/60 shadow;
+    }
+
+    .error {
+        @apply mt-2 text-sm text-red-500;
     }
 
     .form-error {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\MediaSyncService;
 use App\Services\RadarrService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,6 +32,7 @@ class InteractiveGrabController extends Controller
 
             return response()->json([
                 'radarrMovieId' => $movie['id'],
+                'tmdbId' => (int) $data['tmdb_id'],
                 'wasGhostAdded' => ! ($movie['hasFile'] ?? false) && ! ($movie['monitored'] ?? false),
                 'releases' => $releases,
             ]);
@@ -41,12 +43,13 @@ class InteractiveGrabController extends Controller
         }
     }
 
-    public function execute(Request $request, RadarrService $radarr): JsonResponse
+    public function execute(Request $request, RadarrService $radarr, MediaSyncService $mediaSync): JsonResponse
     {
         $data = $request->validate([
             'radarr_movie_id' => 'required|integer',
             'guid' => 'required|string',
             'indexer_id' => 'required|integer',
+            'tmdb_id' => 'nullable|integer',
         ]);
 
         try {
@@ -55,6 +58,13 @@ class InteractiveGrabController extends Controller
                 $data['guid'],
                 (int) $data['indexer_id']
             );
+
+            if (! empty($data['tmdb_id'])) {
+                $mediaSync->markMovieProcessing(
+                    (int) $data['tmdb_id'],
+                    (int) $data['radarr_movie_id']
+                );
+            }
 
             return response()->json([
                 'ok' => true,
