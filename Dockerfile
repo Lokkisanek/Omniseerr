@@ -12,8 +12,9 @@ ENV VITE_REVERB_APP_KEY=omniseerr-key \
     VITE_REVERB_SCHEME=http
 RUN npm run build
 
-# Stage 2: Production Runtime (PHP 8.3-FPM + Nginx + SQLite + Supervisor)
-FROM php:8.3-fpm-alpine
+# Stage 2: Production Runtime (PHP 8.4-FPM + Nginx + SQLite + Supervisor)
+# Symfony 8.1 in composer.lock requires PHP >= 8.4.1.
+FROM php:8.4-fpm-alpine
 
 RUN apk add --no-cache \
     nginx \
