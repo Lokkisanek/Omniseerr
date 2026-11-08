@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { usePage } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { CheckCircle2, Clock3, Download, LoaderCircle } from '@lucide/vue';
 
 const props = defineProps({
@@ -16,6 +16,12 @@ const canGrab = computed(() => {
 });
 
 const hovered = ref(false);
+
+const detailHref = computed(() =>
+    props.item.mediaType === 'tv'
+        ? `/tv/${props.item.tmdbId}`
+        : `/movie/${props.item.tmdbId}`,
+);
 
 const mediaLabel = computed(() => (props.item.mediaType === 'tv' ? 'SERIES' : 'MOVIE'));
 const mediaBadgeClass = computed(() =>
@@ -42,13 +48,14 @@ const statusMeta = computed(() => {
     }
 });
 
-const showGrab = computed(() => props.item.mediaType === 'movie' && canGrab.value && status.value !== 'AVAILABLE');
+const showGrab = computed(() => canGrab.value && status.value !== 'AVAILABLE');
 </script>
 
 <template>
     <div class="w-full" data-testid="title-card">
-        <div
-            class="group relative transform-gpu overflow-hidden rounded-xl bg-gray-800 outline-none ring-1 transition duration-300 ease-out"
+        <Link
+            :href="detailHref"
+            class="group relative block transform-gpu overflow-hidden rounded-xl bg-gray-800 outline-none ring-1 transition duration-300 ease-out"
             :class="hovered ? 'z-20 scale-105 shadow-xl ring-gray-500' : 'scale-100 shadow ring-gray-700'"
             style="padding-bottom: 150%"
             @mouseenter="hovered = true"
@@ -69,7 +76,6 @@ const showGrab = computed(() => props.item.mediaType === 'movie' && canGrab.valu
                     No poster
                 </div>
 
-                <!-- Always-visible badges -->
                 <div class="absolute inset-x-0 top-0 z-30 flex items-start justify-between p-2">
                     <div class="rounded-full border shadow-md" :class="mediaBadgeClass">
                         <div class="flex h-4 items-center px-2 text-[10px] font-semibold tracking-wider text-white uppercase sm:h-5 sm:text-xs">
@@ -90,7 +96,6 @@ const showGrab = computed(() => props.item.mediaType === 'movie' && canGrab.valu
                     </div>
                 </div>
 
-                <!-- Hover overlay (Seerr-style) -->
                 <div
                     class="absolute inset-0 z-20 flex flex-col justify-end bg-gradient-to-t from-gray-900 via-gray-900/80 to-gray-900/20 p-2.5 transition duration-200"
                     :class="hovered ? 'opacity-100' : 'opacity-0'"
@@ -105,7 +110,7 @@ const showGrab = computed(() => props.item.mediaType === 'movie' && canGrab.valu
                         v-if="showGrab"
                         type="button"
                         class="btn btn-primary btn-sm mt-2 w-full"
-                        @click.stop="emit('grab', item)"
+                        @click.prevent.stop="emit('grab', item)"
                     >
                         <Download class="mr-1.5 h-3.5 w-3.5" />
                         Request
@@ -116,14 +121,8 @@ const showGrab = computed(() => props.item.mediaType === 'movie' && canGrab.valu
                     >
                         Available
                     </div>
-                    <div
-                        v-else-if="item.mediaType === 'tv'"
-                        class="mt-2 rounded-md border border-gray-600 bg-gray-900/70 px-2 py-1.5 text-center text-[11px] text-gray-400"
-                    >
-                        TV grab soon
-                    </div>
                 </div>
             </div>
-        </div>
+        </Link>
     </div>
 </template>

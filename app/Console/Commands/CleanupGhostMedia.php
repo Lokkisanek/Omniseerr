@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\GhostMedia;
 use App\Models\ServiceConfig;
 use App\Services\RadarrService;
+use App\Services\SonarrService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -15,7 +16,7 @@ class CleanupGhostMedia extends Command
 
     protected $description = 'Remove abandoned Ghost-Add movies/series from Radarr/Sonarr';
 
-    public function handle(RadarrService $radarr): int
+    public function handle(RadarrService $radarr, SonarrService $sonarr): int
     {
         $minutes = max(1, (int) $this->option('minutes'));
         $cutoff = now()->subMinutes($minutes);
@@ -30,11 +31,15 @@ class CleanupGhostMedia extends Command
 
         foreach ($ghosts as $ghost) {
             try {
-                if ($ghost->media_type === 'movie' && ServiceConfig::for('radarr')?->is_enabled) {
+                if (in_array($ghost->media_type, ['movie'], true) && ServiceConfig::for('radarr')?->is_enabled) {
                     $radarr->deleteGhostMovie($ghost->external_arr_id);
                     $this->line("Cleaned ghost movie #{$ghost->external_arr_id}");
                 }
-                // Series cleanup will mirror movies once interactive TV grab is complete.
+
+                if (in_array($ghost->media_type, ['tv', 'series'], true) && ServiceConfig::for('sonarr')?->is_enabled) {
+                    $sonarr->deleteGhostSeries($ghost->external_arr_id);
+                    $this->line("Cleaned ghost series #{$ghost->external_arr_id}");
+                }
             } catch (Throwable $e) {
                 Log::warning('Ghost cleanup failed', [
                     'ghost_id' => $ghost->id,

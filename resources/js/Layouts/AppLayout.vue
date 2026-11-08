@@ -80,11 +80,11 @@ const links = computed(() => {
             show: !!can.value.manageUsers,
         },
         {
-            href: '/setup?force=1',
+            href: '/settings',
             label: 'Settings',
             icon: Settings,
-            active: path.value === '/setup',
-            show: !!can.value.manageSettings,
+            active: path.value === '/settings' || path.value.startsWith('/settings/'),
+            show: true,
         },
     ];
 

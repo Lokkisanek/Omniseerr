@@ -12,12 +12,15 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'grabbed']);
 
+const mediaType = computed(() => props.media.mediaType || 'movie');
+const isTv = computed(() => mediaType.value === 'tv');
+
 const loading = ref(true);
 const grabbingGuid = ref(null);
-const radarrMovieId = ref(null);
+const arrId = ref(null);
 const releases = ref([]);
 const searchQuery = ref('');
-const hideRejected = ref(false);
+const hideRejected = ref(true);
 const resolutionFilter = ref('ALL');
 const errorMsg = ref(null);
 const qualityProfileId = ref(props.defaults.qualityProfileId ?? props.profiles[0]?.id ?? null);
@@ -36,7 +39,7 @@ const fetchReleases = async () => {
             '/api/interactive-grab/prepare',
             {
                 tmdb_id: props.media.tmdbId,
-                media_type: 'movie',
+                media_type: mediaType.value,
                 quality_profile_id: qualityProfileId.value,
                 root_folder_path: rootFolderPath.value,
             },
@@ -44,23 +47,32 @@ const fetchReleases = async () => {
         );
 
         if (closed.value) {
-            if (data.radarrMovieId) {
-                axios.delete(`/api/interactive-grab/cleanup/${data.radarrMovieId}`).catch(() => {});
+            if (data.arrId) {
+                axios
+                    .delete(`/api/interactive-grab/cleanup/${data.arrId}`, {
+                        params: { media_type: mediaType.value },
+                    })
+                    .catch(() => {});
             }
             return;
         }
 
-        radarrMovieId.value = data.radarrMovieId;
+        arrId.value = data.arrId;
         releases.value = data.releases;
     } catch (e) {
         if (axios.isCancel?.(e) || e.code === 'ERR_CANCELED') {
             return;
         }
-        errorMsg.value = e.response?.data?.message || 'Failed to load releases from Radarr/Prowlarr.';
+        errorMsg.value =
+            e.response?.data?.message ||
+            `Failed to load releases from ${isTv.value ? 'Sonarr' : 'Radarr'}/Prowlarr.`;
     } finally {
         loading.value = false;
     }
 };
+
+const acceptedCount = computed(() => releases.value.filter((r) => !r.rejected).length);
+const rejectedCount = computed(() => releases.value.filter((r) => r.rejected).length);
 
 const filteredReleases = computed(() =>
     releases.value.filter((r) => {
@@ -71,16 +83,27 @@ const filteredReleases = computed(() =>
     }),
 );
 
+const emptyHint = computed(() => {
+    if (releases.value.length === 0) {
+        return 'Indexers returned no releases. Check Prowlarr / Sonarr indexer status.';
+    }
+    if (acceptedCount.value === 0 && hideRejected.value) {
+        return `No releases matched “${props.media.title}”. Indexers returned ${rejectedCount.value} unrelated result${rejectedCount.value === 1 ? '' : 's'} (hidden). CZ/SK names like “1.serie” are invisible to Sonarr (it needs S01 / Season 1). Short titles also collide on Sk-CzTorrent — check the same search in Sonarr Interactive Search, or grab a S01-named release.`;
+    }
+    return 'No releases match the current filters.';
+});
+
 const grabRelease = async (release) => {
     grabbingGuid.value = release.guid;
     try {
         await axios.post('/api/interactive-grab/execute', {
-            radarr_movie_id: radarrMovieId.value,
+            media_type: mediaType.value,
+            arr_id: arrId.value,
             tmdb_id: props.media?.tmdbId,
             guid: release.guid,
             indexer_id: release.indexerId,
         });
-        radarrMovieId.value = null;
+        arrId.value = null;
         emit('grabbed', release);
         emit('close');
     } catch (e) {
@@ -99,8 +122,12 @@ const close = () => {
 onBeforeUnmount(() => {
     closed.value = true;
     abortController.value?.abort();
-    if (radarrMovieId.value) {
-        axios.delete(`/api/interactive-grab/cleanup/${radarrMovieId.value}`).catch(() => {});
+    if (arrId.value) {
+        axios
+            .delete(`/api/interactive-grab/cleanup/${arrId.value}`, {
+                params: { media_type: mediaType.value },
+            })
+            .catch(() => {});
     }
 });
 
@@ -123,15 +150,17 @@ onMounted(fetchReleases);
               {{ media.title }}
               <span class="font-medium text-gray-400">({{ media.year }})</span>
             </h2>
-            <p class="text-xs text-gray-400">Interactive Prowlarr & Radarr release selector</p>
+            <p class="text-xs text-gray-400">
+              Interactive Prowlarr & {{ isTv ? 'Sonarr' : 'Radarr' }} release selector
+            </p>
           </div>
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
-          <select v-model="qualityProfileId" :disabled="loading || !!radarrMovieId">
+          <select v-model="qualityProfileId" :disabled="loading || !!arrId">
             <option v-for="p in profiles" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
-          <select v-model="rootFolderPath" :disabled="loading || !!radarrMovieId">
+          <select v-model="rootFolderPath" :disabled="loading || !!arrId">
             <option v-for="f in folders" :key="f.path" :value="f.path">{{ f.path }}</option>
           </select>
           <input v-model="searchQuery" type="text" placeholder="Filter (CZ, Atmos, REMUX)..." />
@@ -172,6 +201,12 @@ onMounted(fetchReleases);
             <div class="flex flex-wrap items-center gap-2">
               <span class="rounded-full border border-indigo-500 bg-indigo-600/80 px-2 py-0.5 text-xs font-semibold text-white">
                 {{ rel.quality }}
+              </span>
+              <span
+                v-if="rel.fullSeason"
+                class="rounded-full border border-purple-500 bg-purple-600/80 px-2 py-0.5 text-xs font-semibold text-white"
+              >
+                Season pack{{ rel.seasonNumber != null ? ` S${rel.seasonNumber}` : '' }}
               </span>
               <span class="rounded-full border border-gray-600 bg-gray-900 px-2 py-0.5 text-xs text-gray-300">{{ rel.indexer }}</span>
               <span
@@ -229,8 +264,16 @@ onMounted(fetchReleases);
           </div>
         </div>
 
-        <div v-if="filteredReleases.length === 0" class="p-12 text-center text-sm text-gray-400">
-          No releases match the current filters.
+        <div v-if="filteredReleases.length === 0" class="space-y-3 p-12 text-center text-sm text-gray-400">
+          <p>{{ emptyHint }}</p>
+          <button
+            v-if="acceptedCount === 0 && rejectedCount > 0 && hideRejected"
+            type="button"
+            class="btn btn-default btn-sm"
+            @click="hideRejected = false"
+          >
+            Show {{ rejectedCount }} rejected
+          </button>
         </div>
       </div>
     </div>

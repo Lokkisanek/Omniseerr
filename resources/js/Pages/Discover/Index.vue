@@ -20,6 +20,7 @@ const props = defineProps({
     studios: { type: Array, default: () => [] },
     sortOptions: { type: Object, default: () => ({}) },
     activeFilters: { type: Number, default: 0 },
+    sonarrEnabled: { type: Boolean, default: false },
     filters: {
         type: Object,
         default: () => ({
@@ -28,15 +29,25 @@ const props = defineProps({
             provider: null,
             genre: null,
             studio: null,
+            keyword: null,
+            keywordName: null,
             sort: 'popularity.desc',
             region: 'CZ',
         }),
     },
     radarr: { type: Object, default: () => ({ defaults: {}, profiles: [], folders: [] }) },
+    sonarr: { type: Object, default: () => ({ defaults: {}, profiles: [], folders: [] }) },
 });
 
 const selected = ref(null);
 const sort = ref(props.filters.sort || 'popularity.desc');
+
+const grabConfig = computed(() => {
+    if (selected.value?.mediaType === 'tv') {
+        return props.sonarr;
+    }
+    return props.radarr;
+});
 
 watch(
     () => props.filters.sort,
@@ -53,7 +64,7 @@ const clearHref = computed(() => {
 });
 
 const showBack = computed(() =>
-    !!(props.filters.q || props.filters.provider || props.filters.genre || props.filters.studio),
+    !!(props.filters.q || props.filters.provider || props.filters.genre || props.filters.studio || props.filters.keyword),
 );
 
 function applySort() {
@@ -63,6 +74,8 @@ function applySort() {
         provider: props.filters.provider || undefined,
         genre: props.filters.genre || undefined,
         studio: props.filters.studio || undefined,
+        keyword: props.filters.keyword || undefined,
+        keyword_name: props.filters.keywordName || undefined,
         sort: sort.value,
     };
     Object.keys(params).forEach((key) => {
@@ -174,9 +187,9 @@ function applySort() {
         <InteractiveGrabModal
             v-if="selected"
             :media="selected"
-            :profiles="radarr.profiles"
-            :folders="radarr.folders"
-            :defaults="radarr.defaults"
+            :profiles="grabConfig.profiles"
+            :folders="grabConfig.folders"
+            :defaults="grabConfig.defaults"
             @close="selected = null"
             @grabbed="selected = null"
         />

@@ -109,8 +109,23 @@ class MediaSyncService
 
     public function markMovieProcessing(int $tmdbId, ?int $externalServiceId = null, ?string $slug = null, ?string $title = null): Media
     {
+        return $this->markProcessing('movie', $tmdbId, $externalServiceId, $slug, $title);
+    }
+
+    public function markSeriesProcessing(int $tmdbId, ?int $externalServiceId = null, ?string $slug = null, ?string $title = null): Media
+    {
+        return $this->markProcessing('tv', $tmdbId, $externalServiceId, $slug, $title);
+    }
+
+    private function markProcessing(
+        string $mediaType,
+        int $tmdbId,
+        ?int $externalServiceId = null,
+        ?string $slug = null,
+        ?string $title = null
+    ): Media {
         $media = Media::query()->firstOrNew([
-            'media_type' => 'movie',
+            'media_type' => $mediaType,
             'tmdb_id' => $tmdbId,
         ]);
 

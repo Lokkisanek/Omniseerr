@@ -48,7 +48,13 @@ class SonarrService
     {
         $profiles = $this->client()->get('/qualityprofile')->throw()->json();
         $folders = $this->client()->get('/rootfolder')->throw()->json();
-        $languageProfiles = $this->client()->get('/languageprofile')->json() ?? [];
+
+        $languageProfiles = [];
+        try {
+            $languageProfiles = $this->client()->get('/languageprofile')->json() ?? [];
+        } catch (\Throwable) {
+            // Sonarr v4 removed language profiles.
+        }
 
         return [
             'profiles' => collect($profiles)->map(fn ($p) => [
@@ -67,8 +73,13 @@ class SonarrService
         ];
     }
 
+    public function listSeries(): array
+    {
+        return $this->client(60)->get('/series')->throw()->json() ?? [];
+    }
+
     /**
-     * Skeleton for series Ghost-Add. Full season/episode interactive grab lands in a later pass.
+     * Ghost-add series (monitored=false, no auto-search) so interactive release search works.
      */
     public function ensureSeriesExistsForInteractiveSearch(
         int $tmdbId,
@@ -76,36 +87,47 @@ class SonarrService
         ?int $profileId = null,
         ?string $rootFolder = null
     ): array {
-        if (! $tvdbId) {
-            throw new RuntimeException('Sonarr interactive search requires a TVDB ID.');
+        $existing = collect($this->listSeries())->first(
+            fn (array $s) => (int) ($s['tmdbId'] ?? 0) === $tmdbId
+                || ($tvdbId && (int) ($s['tvdbId'] ?? 0) === $tvdbId)
+        );
+
+        if ($existing) {
+            return $existing;
         }
 
-        $existing = $this->client()->get('/series', ['tvdbId' => $tvdbId])->throw()->json();
+        $lookup = $this->lookupSeries($tmdbId, $tvdbId);
 
-        if (! empty($existing)) {
-            return $existing[0];
-        }
-
-        $lookup = $this->client()->get('/series/lookup', ['term' => "tvdb:{$tvdbId}"])->throw()->json();
-
-        if (empty($lookup)) {
-            throw new RuntimeException("Series with TVDB ID {$tvdbId} was not found in Sonarr lookup.");
-        }
-
-        $series = $lookup[0];
-        unset($series['id']);
+        unset($lookup['id'], $lookup['path']);
 
         $config = $this->resolveConfig('sonarr', $this->config);
         $defaults = $config->defaults ?? [];
 
-        $payload = array_merge($series, [
-            'qualityProfileId' => $profileId ?? ($defaults['qualityProfileId'] ?? null),
-            'rootFolderPath' => $rootFolder ?? ($defaults['rootFolderPath'] ?? null),
+        $qualityProfileId = $profileId ?? ($defaults['qualityProfileId'] ?? null);
+        $rootFolderPath = $rootFolder ?? ($defaults['rootFolderPath'] ?? null);
+
+        if (! $qualityProfileId || ! $rootFolderPath) {
+            throw new RuntimeException('Sonarr quality profile and root folder must be configured.');
+        }
+
+        // Ghost: unmonitored seasons, no automatic search.
+        $seasons = collect($lookup['seasons'] ?? [])
+            ->map(fn (array $season) => array_merge($season, [
+                'monitored' => false,
+            ]))
+            ->values()
+            ->all();
+
+        $payload = array_merge($lookup, [
+            'qualityProfileId' => $qualityProfileId,
+            'rootFolderPath' => $rootFolderPath,
             'monitored' => false,
             'seasonFolder' => true,
+            'seasons' => $seasons,
             'addOptions' => [
                 'searchForMissingEpisodes' => false,
                 'searchForCutoffUnmetEpisodes' => false,
+                'monitor' => 'none',
             ],
         ]);
 
@@ -113,15 +135,14 @@ class SonarrService
             $payload['languageProfileId'] = $defaults['languageProfileId'];
         }
 
-        if (! $payload['qualityProfileId'] || ! $payload['rootFolderPath']) {
-            throw new RuntimeException('Sonarr quality profile and root folder must be configured.');
-        }
+        // Prefer series type from lookup; default standard.
+        $payload['seriesType'] = $lookup['seriesType'] ?? 'standard';
 
         $created = $this->client()->post('/series', $payload)->throw()->json();
 
         GhostMedia::updateOrCreate(
             [
-                'media_type' => 'series',
+                'media_type' => 'tv',
                 'tmdb_id' => $tmdbId,
             ],
             [
@@ -130,6 +151,120 @@ class SonarrService
         );
 
         return $created;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function lookupSeries(int $tmdbId, ?int $tvdbId): array
+    {
+        $terms = ["tmdb:{$tmdbId}"];
+        if ($tvdbId) {
+            array_unshift($terms, "tvdb:{$tvdbId}");
+        }
+
+        foreach ($terms as $term) {
+            $lookup = $this->client()->get('/series/lookup', ['term' => $term])->throw()->json() ?? [];
+            if (! empty($lookup)) {
+                // Prefer exact tmdb match when present.
+                $exact = collect($lookup)->first(
+                    fn (array $s) => (int) ($s['tmdbId'] ?? 0) === $tmdbId
+                );
+
+                return $exact ?: $lookup[0];
+            }
+        }
+
+        throw new RuntimeException("Series with TMDB ID {$tmdbId} was not found in Sonarr lookup.");
+    }
+
+    public function fetchInteractiveReleases(int $sonarrSeriesId): array
+    {
+        $releases = $this->client(90)->get('/release', [
+            'seriesId' => $sonarrSeriesId,
+        ])->throw()->json() ?? [];
+
+        return collect($releases)->map(function (array $r) {
+            return [
+                'guid' => $r['guid'],
+                'indexerId' => $r['indexerId'],
+                'indexer' => $r['indexer'] ?? 'Unknown',
+                'title' => $r['title'],
+                'size' => $r['size'] ?? 0,
+                'sizeFormatted' => round(($r['size'] ?? 0) / 1073741824, 2).' GB',
+                'seeders' => $r['seeders'] ?? 0,
+                'leechers' => $r['leechers'] ?? 0,
+                'protocol' => $r['protocol'] ?? 'torrent',
+                'quality' => $r['quality']['quality']['name'] ?? 'Unknown',
+                'resolution' => $r['quality']['quality']['resolution'] ?? 0,
+                'customFormats' => collect($r['customFormats'] ?? [])->pluck('name')->all(),
+                'customFormatScore' => $r['customFormatScore'] ?? 0,
+                'languages' => collect($r['languages'] ?? [])->pluck('name')->all(),
+                'rejected' => $r['rejected'] ?? false,
+                'rejections' => $r['rejections'] ?? [],
+                'ageHours' => round(($r['ageMinutes'] ?? 0) / 60, 1),
+                'infoUrl' => $r['infoUrl'] ?? null,
+                'fullSeason' => (bool) ($r['fullSeason'] ?? false),
+                'seasonNumber' => $r['seasonNumber'] ?? null,
+            ];
+        })
+            ->sortByDesc(fn ($r) => [
+                ! $r['rejected'],
+                $r['customFormatScore'],
+                $r['seeders'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    public function grabRelease(int $sonarrSeriesId, string $guid, int $indexerId): array
+    {
+        $grabbed = $this->client(30)->post('/release', [
+            'guid' => $guid,
+            'indexerId' => $indexerId,
+        ])->throw()->json();
+
+        $series = $this->client()->get("/series/{$sonarrSeriesId}")->throw()->json();
+        $series['monitored'] = true;
+        $series['seasons'] = collect($series['seasons'] ?? [])
+            ->map(function (array $season) {
+                // Keep specials (0) unmonitored by default; monitor regular seasons.
+                if ((int) ($season['seasonNumber'] ?? -1) === 0) {
+                    return $season;
+                }
+
+                return array_merge($season, ['monitored' => true]);
+            })
+            ->values()
+            ->all();
+
+        $this->client()->put("/series/{$sonarrSeriesId}", $series)->throw();
+
+        GhostMedia::query()
+            ->where('media_type', 'tv')
+            ->where('external_arr_id', $sonarrSeriesId)
+            ->delete();
+
+        return is_array($grabbed) ? $grabbed : ['ok' => true];
+    }
+
+    public function deleteGhostSeries(int $sonarrSeriesId): void
+    {
+        $ghost = GhostMedia::query()
+            ->where('media_type', 'tv')
+            ->where('external_arr_id', $sonarrSeriesId)
+            ->first();
+
+        if (! $ghost) {
+            return;
+        }
+
+        $this->client()->delete("/series/{$sonarrSeriesId}", [
+            'deleteFiles' => false,
+            'addImportListExclusion' => false,
+        ])->throw();
+
+        $ghost->delete();
     }
 
     public function getQueue(): array
@@ -144,11 +279,6 @@ class SonarrService
         } catch (\Throwable) {
             return [];
         }
-    }
-
-    public function listSeries(): array
-    {
-        return $this->client(60)->get('/series')->throw()->json() ?? [];
     }
 
     public function getLibraryStatesByTmdbIds(array $tmdbIds): array

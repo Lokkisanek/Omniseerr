@@ -4,6 +4,9 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PlexAuthController;
 use App\Http\Controllers\DiscoverController;
 use App\Http\Controllers\InteractiveGrabController;
+use App\Http\Controllers\MediaDetailController;
+use App\Http\Controllers\PersonController;
+use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SetupWizardController;
 use App\Http\Controllers\TelemetryController;
 use App\Http\Controllers\UserController;
@@ -49,10 +52,17 @@ Route::middleware(RedirectIfSetupComplete::class)->group(function () {
 
 Route::middleware(['auth', EnsureSetupComplete::class])->group(function () {
     Route::get('/discover', [DiscoverController::class, 'index'])->name('discover');
+    Route::get('/movie/{tmdbId}', [MediaDetailController::class, 'movie'])->whereNumber('tmdbId')->name('movie.show');
+    Route::get('/tv/{tmdbId}', [MediaDetailController::class, 'tv'])->whereNumber('tmdbId')->name('tv.show');
+    Route::get('/person/{personId}', [PersonController::class, 'show'])->whereNumber('personId')->name('person.show');
 
     Route::get('/activity', [TelemetryController::class, 'queue'])
         ->middleware(EnsurePermission::class.':RECENT_VIEW,MANAGE_REQUESTS,ADMIN')
         ->name('activity');
+
+    Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
+    Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
+    Route::post('/settings/test', [SettingsController::class, 'test'])->name('settings.test');
 
     Route::get('/users', [UserController::class, 'index'])
         ->middleware(EnsurePermission::class.':MANAGE_USERS,ADMIN')
@@ -69,11 +79,11 @@ Route::middleware(['auth', EnsureSetupComplete::class])->group(function () {
 
     Route::prefix('api')->group(function () {
         Route::post('/interactive-grab/prepare', [InteractiveGrabController::class, 'prepare'])
-            ->middleware(EnsurePermission::class.':REQUEST,REQUEST_MOVIE,ADMIN');
+            ->middleware(EnsurePermission::class.':REQUEST,REQUEST_MOVIE,REQUEST_TV,ADMIN');
         Route::post('/interactive-grab/execute', [InteractiveGrabController::class, 'execute'])
-            ->middleware(EnsurePermission::class.':REQUEST,REQUEST_MOVIE,ADMIN');
-        Route::delete('/interactive-grab/cleanup/{radarrMovieId}', [InteractiveGrabController::class, 'cleanup'])
-            ->middleware(EnsurePermission::class.':REQUEST,REQUEST_MOVIE,ADMIN');
+            ->middleware(EnsurePermission::class.':REQUEST,REQUEST_MOVIE,REQUEST_TV,ADMIN');
+        Route::delete('/interactive-grab/cleanup/{arrId}', [InteractiveGrabController::class, 'cleanup'])
+            ->middleware(EnsurePermission::class.':REQUEST,REQUEST_MOVIE,REQUEST_TV,ADMIN');
 
         Route::get('/telemetry/snapshot', [TelemetryController::class, 'snapshot'])
             ->middleware(EnsurePermission::class.':RECENT_VIEW,MANAGE_REQUESTS,ADMIN');

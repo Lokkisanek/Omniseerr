@@ -6,6 +6,7 @@ use App\Models\Media;
 use App\Models\ServiceConfig;
 use App\Services\DiscoverEnricher;
 use App\Services\RadarrService;
+use App\Services\SonarrService;
 use App\Services\TmdbService;
 use App\Support\DiscoverCatalog;
 use App\Support\MediaStatus;
@@ -33,6 +34,7 @@ class DiscoverController extends Controller
         Request $request,
         TmdbService $tmdb,
         RadarrService $radarr,
+        SonarrService $sonarr,
         DiscoverEnricher $enricher
     ): Response {
         $query = trim((string) $request->get('q', ''));
@@ -41,6 +43,8 @@ class DiscoverController extends Controller
         $providerId = $request->filled('provider') ? (int) $request->get('provider') : null;
         $genreId = $request->filled('genre') ? (int) $request->get('genre') : null;
         $studioId = $request->filled('studio') ? (int) $request->get('studio') : null;
+        $keywordId = $request->filled('keyword') ? (int) $request->get('keyword') : null;
+        $keywordName = trim((string) $request->get('keyword_name', ''));
         $sortBy = (string) $request->get('sort', 'popularity.desc');
         if (! array_key_exists($sortBy, self::SORT_OPTIONS)) {
             $sortBy = 'popularity.desc';
@@ -62,12 +66,16 @@ class DiscoverController extends Controller
         if ($providerId) {
             $activeFilters++;
         }
+        if ($keywordId) {
+            $activeFilters++;
+        }
 
-        // List views: Movies, Series, genre/studio/network/search — dense Seerr grid.
+        // List views: Movies, Series, genre/studio/network/keyword/search — dense Seerr grid.
         $isList = $query !== ''
             || $genreId
             || $studioId
             || $providerId
+            || $keywordId
             || in_array($mediaType, ['movie', 'tv'], true);
 
         try {
@@ -80,6 +88,8 @@ class DiscoverController extends Controller
                     $genreId,
                     $studioId,
                     $providerId,
+                    $keywordId,
+                    $keywordName,
                     $sortBy,
                     $region
                 );
@@ -95,10 +105,20 @@ class DiscoverController extends Controller
 
         $radarrDefaults = ServiceConfig::for('radarr')?->defaults ?? [];
         $radarrMeta = ['profiles' => [], 'folders' => []];
+        $sonarrDefaults = ServiceConfig::for('sonarr')?->defaults ?? [];
+        $sonarrMeta = ['profiles' => [], 'folders' => []];
 
         try {
             if (ServiceConfig::for('radarr')?->is_enabled) {
                 $radarrMeta = $radarr->getMetadataProfiles();
+            }
+        } catch (Throwable) {
+            // Keep empty metadata.
+        }
+
+        try {
+            if (ServiceConfig::for('sonarr')?->is_enabled) {
+                $sonarrMeta = $sonarr->getMetadataProfiles();
             }
         } catch (Throwable) {
             // Keep empty metadata.
@@ -115,12 +135,15 @@ class DiscoverController extends Controller
             'studios' => DiscoverCatalog::studios(),
             'sortOptions' => self::SORT_OPTIONS,
             'activeFilters' => $activeFilters,
+            'sonarrEnabled' => (bool) ServiceConfig::for('sonarr')?->is_enabled,
             'filters' => [
                 'q' => $query,
                 'type' => $mediaType === 'all' ? null : $mediaType,
                 'provider' => $providerId,
                 'genre' => $genreId,
                 'studio' => $studioId,
+                'keyword' => $keywordId,
+                'keywordName' => $keywordName !== '' ? $keywordName : null,
                 'sort' => $sortBy,
                 'region' => $region,
             ],
@@ -128,6 +151,11 @@ class DiscoverController extends Controller
                 'defaults' => $radarrDefaults,
                 'profiles' => $radarrMeta['profiles'] ?? [],
                 'folders' => $radarrMeta['folders'] ?? [],
+            ],
+            'sonarr' => [
+                'defaults' => $sonarrDefaults,
+                'profiles' => $sonarrMeta['profiles'] ?? [],
+                'folders' => $sonarrMeta['folders'] ?? [],
             ],
         ]);
     }
@@ -143,6 +171,8 @@ class DiscoverController extends Controller
         ?int $genreId,
         ?int $studioId,
         ?int $providerId,
+        ?int $keywordId,
+        string $keywordName,
         string $sortBy,
         string $region
     ): array {
@@ -157,6 +187,17 @@ class DiscoverController extends Controller
             $raw = $tmdb->search($query, $mediaType === 'all' ? 'multi' : $type, pages: 3);
 
             return ['list', "Results for “{$query}”", $enricher->enrich($raw, $type)];
+        }
+
+        if ($keywordId) {
+            $title = $keywordName !== '' ? $keywordName : 'Keyword';
+            $raw = $tmdb->discover($type, [
+                'with_keywords' => (string) $keywordId,
+                'sort_by' => $sort,
+                'region' => $region,
+            ], pages: 3);
+
+            return ['list', $title, $enricher->enrich($this->tag($raw, $type), $type)];
         }
 
         if ($studioId) {

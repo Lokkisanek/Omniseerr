@@ -16,10 +16,16 @@ class TmdbService
     {
         [$base, $key] = $this->credentials();
 
-        return Http::baseUrl($base)
-            ->withToken($key)
+        // v3 keys are 32-char hex → api_key query. JWT read tokens → Bearer.
+        $request = Http::baseUrl($base)
             ->acceptJson()
             ->timeout(20);
+
+        if (str_starts_with($key, 'eyJ')) {
+            return $request->withToken($key);
+        }
+
+        return $request->withQueryParameters(['api_key' => $key]);
     }
 
     /**
@@ -45,11 +51,13 @@ class TmdbService
     {
         $base = rtrim($baseUrl ?: 'https://api.themoviedb.org/3', '/');
 
-        $response = Http::baseUrl($base)
-            ->withToken($apiKey)
+        $request = Http::baseUrl($base)
             ->acceptJson()
-            ->timeout(10)
-            ->get('/configuration');
+            ->timeout(10);
+
+        $response = str_starts_with($apiKey, 'eyJ')
+            ? $request->withToken($apiKey)->get('/configuration')
+            : $request->get('/configuration', ['api_key' => $apiKey]);
 
         $response->throw();
 
@@ -109,7 +117,10 @@ class TmdbService
                 : null,
             'with_genres' => $filters['with_genres'] ?? null,
             'with_companies' => $filters['with_companies'] ?? null,
-            'vote_count.gte' => $filters['vote_count.gte'] ?? ($hasProviders || isset($filters['with_genres']) ? 20 : null),
+            'with_keywords' => $filters['with_keywords'] ?? null,
+            'vote_count.gte' => $filters['vote_count.gte'] ?? (
+                $hasProviders || isset($filters['with_genres']) || isset($filters['with_keywords']) ? 20 : null
+            ),
             'language' => $filters['language'] ?? 'en-US',
             'region' => $filters['region'] ?? null,
         ], fn ($v) => $v !== null && $v !== '');
@@ -133,6 +144,30 @@ class TmdbService
     public function tv(int $tmdbId): array
     {
         return $this->client()->get("/tv/{$tmdbId}")->throw()->json();
+    }
+
+    public function movieDetails(int $tmdbId): array
+    {
+        return $this->client()->get("/movie/{$tmdbId}", [
+            'append_to_response' => 'credits,keywords,videos,recommendations,similar,external_ids,release_dates',
+            'language' => 'en-US',
+        ])->throw()->json();
+    }
+
+    public function tvDetails(int $tmdbId): array
+    {
+        return $this->client()->get("/tv/{$tmdbId}", [
+            'append_to_response' => 'aggregate_credits,keywords,videos,recommendations,similar,external_ids,content_ratings',
+            'language' => 'en-US',
+        ])->throw()->json();
+    }
+
+    public function personDetails(int $personId): array
+    {
+        return $this->client()->get("/person/{$personId}", [
+            'append_to_response' => 'combined_credits,external_ids',
+            'language' => 'en-US',
+        ])->throw()->json();
     }
 
     /**
